@@ -5,8 +5,8 @@ const admin = require('firebase-admin');
 const app = express();
 app.use(express.json());
 
-// 🔑 ১. পেজ এক্সেস টোকেন (নতুন টোকেনটি এখানে বসাবেন)
-let PAGE_ACCESS_TOKEN = process.env.PAGE_ACCESS_TOKEN || "EAAMR7ZCs6lokBSBYsHKVCZCWYstvgqeTFPhTQJTi0GjZBZCQceicRnPYZCbVLSmeFIdvngTJ5mGQcHhquPLWpkKZA1DObT0UpQLiHkbLgGoI5NNWfNQ6jIbtlmKyxBcQzHS74rIOfclQAipzb1aV4tig3xmRfqoUAgx0dODaaZAXYMFLAH10WEdPPkboK7oN6j9brajMBrDZArBlGbndqp2cIoQUlgs34rHxWbDfC2ZBB7QEZD";
+// 🔑 ১. পেজ এক্সেস টোকেন এবং সিক্রেট ভেরিফাই টোকেন
+let PAGE_ACCESS_TOKEN = process.env.PAGE_ACCESS_TOKEN || "EAAMR7ZCs6lokBSEWQkjwD6UOJhz8uBLoZAG0wW1tbZC6zggLQXVI0caWFIfrxSY9pGl1zRpDDZC20lenNRelng4ayFbXGUwnxraYEtZBjqgOm2nqZBKRtWVDmAA6Bvv5xNXIRtzRBbQbcHqaMuuPgZAzVQync5wzLZACxyfbjjVcC0QCsfJ0fELpsdGoFsyiyCOQsVyogBZAGf3WZCbFE2FEkCpHlv3vXPrukPOAZDZD";
 const VERIFY_TOKEN = "ghost_store_secret_token";
 
 // 🔑 ২. ফায়ারবেজ ডাটাবেজ ইন্টিগ্রেশন
@@ -56,7 +56,7 @@ app.post('/webhook', async (req, res) => {
                 if (webhook_event.message && webhook_event.message.text) {
                     let userMsg = webhook_event.message.text;
 
-                    // এডমিন প্যানেল থেকে লাইভ প্রম্পট ও সেটিংস রিড করা
+                    // এডমিন প্যানেল থেকে সেটিংস রিড করা
                     let apiKey = "AQ.Ab8RN6KZTeYGim8_lqesCfsnjEm5j22QCxNRtkKeK1f3IC0ZVA";
                     let botName = "S.P.A.R.K. (Ghost AI)";
                     let customAdminPrompt = "";
@@ -76,7 +76,7 @@ app.post('/webhook', async (req, res) => {
                         }
                     }
 
-                    // জেমিনি ৩.৬ এআই থেকে উত্তর আনা
+                    // জেমিনি এআই থেকে লাইভ উত্তর আনা
                     let aiReply = await getGeminiReply(userMsg, apiKey, botName, customAdminPrompt);
                     await sendMessengerMessage(sender_psid, aiReply);
                 }
@@ -88,19 +88,20 @@ app.post('/webhook', async (req, res) => {
     }
 });
 
-// ৫. জেমিনি ৩.৬ ও ৩.৫ মডেল চেইন (Gemini 3.6 & 3.5 Models)
+// ৫. বুলেটপ্রুফ ডাবল-সেফগার্ড জেমিনি এআই কলিং
 async function getGeminiReply(userMsg, apiKey, botName, customAdminPrompt) {
     let systemInstructionText = `তুমি "Ghost Store BD" এর কাস্টমার সাপোর্ট বট ${botName}। 
 মেসেঞ্জারে ইউজারকে অত্যন্ত বিনয়ী ও মার্জিত প্রমিত বাংলা/ইংরেজি/বাংলিশে সমাধান দেবে।
 
 ${customAdminPrompt ? `[এডমিন প্যানেলের লাইভ ইনস্ট্রাকশন ও নিয়মাবলি]:\n${customAdminPrompt}` : ''}`;
 
-    const cleanKey = (apiKey || "").trim();
+    const defaultKey = "AQ.Ab8RN6KZTeYGim8_lqesCfsnjEm5j22QCxNRtkKeK1f3IC0ZVA";
+    let keysToTry = [apiKey ? apiKey.trim() : "", defaultKey];
 
-    const targets = [
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.6-flash:generateContent?key=${cleanKey}`,
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash:generateContent?key=${cleanKey}`,
-        `https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent?key=${cleanKey}`
+    const models = [
+        'gemini-2.5-flash',
+        'gemini-2.0-flash',
+        'gemini-1.5-flash'
     ];
 
     const payload = {
@@ -108,19 +109,26 @@ ${customAdminPrompt ? `[এডমিন প্যানেলের লাইভ
         contents: [{ role: "user", parts: [{ text: userMsg }] }]
     };
 
-    for (let url of targets) {
-        try {
-            const res = await axios.post(url, payload, {
-                headers: { 'Content-Type': 'application/json' }
-            });
+    for (let key of keysToTry) {
+        if (!key || key.length < 10) continue;
+        const cleanKey = key.replace(/['"]/g, '');
 
-            if (res.data && res.data.candidates && res.data.candidates[0].content.parts[0].text) {
-                return res.data.candidates[0].content.parts[0].text;
+        for (let model of models) {
+            try {
+                const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(cleanKey)}`;
+                const res = await axios.post(url, payload, {
+                    headers: { 'Content-Type': 'application/json' }
+                });
+
+                if (res.data && res.data.candidates && res.data.candidates[0] && res.data.candidates[0].content && res.data.candidates[0].content.parts[0] && res.data.candidates[0].content.parts[0].text) {
+                    return res.data.candidates[0].content.parts[0].text;
+                }
+            } catch (err) {
+                console.error(`Gemini Fail (${model}):`, err.response ? err.response.status : err.message);
             }
-        } catch (err) {
-            console.error(`Gemini Error (${err.response ? err.response.status : err.message})`);
         }
     }
+
     return "ধন্যবাদ মেসেজ করার জন্য! Ghost Store BD-তে আপনাকে স্বাগতম। কীভাবে সাহায্য করতে পারি বলুন?";
 }
 
@@ -134,7 +142,7 @@ async function sendMessengerMessage(sender_psid, responseText) {
     let token = PAGE_ACCESS_TOKEN.trim();
 
     try {
-        await axios.post(`https://graph.facebook.com/v18.0/me/messages?access_token=${token}`, request_body, {
+        await axios.post(`https://graph.facebook.com/v18.0/me/messages?access_token=${encodeURIComponent(token)}`, request_body, {
             headers: { 'Content-Type': 'application/json' }
         });
         console.log("SUCCESSFULLY_SENT_TO_MESSENGER");
