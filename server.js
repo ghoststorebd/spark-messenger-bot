@@ -5,8 +5,8 @@ const admin = require('firebase-admin');
 const app = express();
 app.use(express.json());
 
-// 🔑 ১. পেজ এক্সেস টোকেন এবং সিক্রেট ভেরিফাই টোকেন
-let PAGE_ACCESS_TOKEN = process.env.PAGE_ACCESS_TOKEN || "EAAMR7ZCs6lokBSEWQkjwD6UOJhz8uBLoZAG0wW1tbZC6zggLQXVI0caWFIfrxSY9pGl1zRpDDZC20lenNRelng4ayFbXGUwnxraYEtZBjqgOm2nqZBKRtWVDmAA6Bvv5xNXIRtzRBbQbcHqaMuuPgZAzVQync5wzLZACxyfbjjVcC0QCsfJ0fELpsdGoFsyiyCOQsVyogBZAGf3WZCbFE2FEkCpHlv3vXPrukPOAZDZD";
+// 🔑 ১. নতুন পেজ এক্সেস টোকেন এবং সিক্রেট ভেরিফাই টোকেন
+let PAGE_ACCESS_TOKEN = process.env.PAGE_ACCESS_TOKEN || "EAAMR7ZCs6lokBSC5FeT8ZCjwyHRziVNRptNxZClsNQrWJyKtj6LFZCzVlqMkpDaDJiTQNZCETXDciEbyWWhsGYnHkEXvJhExHAji0xNC95IV7eWPFBiY9NQVaqDmZBEgcLYy9tr2QOWiDEvPh8qu7xnwaawZBpu4HBYsRLyMlOo9IkjhYuEOt0wKXEu3gtQbVdQxxpq";
 const VERIFY_TOKEN = "ghost_store_secret_token";
 
 // 🔑 ২. ফায়ারবেজ ডাটাবেজ ইন্টিগ্রেশন
@@ -88,7 +88,7 @@ app.post('/webhook', async (req, res) => {
     }
 });
 
-// ৫. বুলেটপ্রুফ ডাবল-সেফগার্ড জেমিনি এআই কলিং
+// ৫. বুলেটপ্রুফ জেমিনি এআই কলিং (Gemini 3.6, 3.5 Lite, 3.5 Flash, 2.5, 1.5)
 async function getGeminiReply(userMsg, apiKey, botName, customAdminPrompt) {
     let systemInstructionText = `তুমি "Ghost Store BD" এর কাস্টমার সাপোর্ট বট ${botName}। 
 মেসেঞ্জারে ইউজারকে অত্যন্ত বিনয়ী ও মার্জিত প্রমিত বাংলা/ইংরেজি/বাংলিশে সমাধান দেবে।
@@ -98,9 +98,12 @@ ${customAdminPrompt ? `[এডমিন প্যানেলের লাইভ
     const defaultKey = "AQ.Ab8RN6KZTeYGim8_lqesCfsnjEm5j22QCxNRtkKeK1f3IC0ZVA";
     let keysToTry = [apiKey ? apiKey.trim() : "", defaultKey];
 
+    // 🎯 ওয়েবসাইট এর সাথে সামঞ্জস্যপূর্ণ লেটেস্ট জেমিনি মডেলসমূহ
     const models = [
+        'gemini-3.6-flash',
+        'gemini-3.5-flash-lite',
+        'gemini-3.5-flash',
         'gemini-2.5-flash',
-        'gemini-2.0-flash',
         'gemini-1.5-flash'
     ];
 
@@ -116,9 +119,15 @@ ${customAdminPrompt ? `[এডমিন প্যানেলের লাইভ
         for (let model of models) {
             try {
                 const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(cleanKey)}`;
-                const res = await axios.post(url, payload, {
-                    headers: { 'Content-Type': 'application/json' }
-                });
+                
+                // Headers ফিক্স: x-goog-api-key এবং AQ. Auth Keys এর জন্য Authorization Bearer যুক্ত করা হয়েছে
+                const headers = { 'Content-Type': 'application/json' };
+                headers['x-goog-api-key'] = cleanKey;
+                if (cleanKey.startsWith('AQ')) {
+                    headers['Authorization'] = `Bearer ${cleanKey}`;
+                }
+
+                const res = await axios.post(url, payload, { headers });
 
                 if (res.data && res.data.candidates && res.data.candidates[0] && res.data.candidates[0].content && res.data.candidates[0].content.parts[0] && res.data.candidates[0].content.parts[0].text) {
                     return res.data.candidates[0].content.parts[0].text;
