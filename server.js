@@ -66,7 +66,7 @@ app.post('/webhook', async (req, res) => {
                             if (doc.exists) {
                                 let data = doc.data();
                                 if (data.aiEnabled === false) return;
-                                if (data.aiApiKey && data.aiApiKey.trim().length > 10) {
+                                if (data.aiApiKey && data.aiApiKey.trim().length > 5) {
                                     apiKeyFromDb = data.aiApiKey.trim();
                                 }
                                 if (data.aiBotName) botName = data.aiBotName;
@@ -77,7 +77,7 @@ app.post('/webhook', async (req, res) => {
                         }
                     }
 
-                    // জেমিনি এআই থেকে লাইভ উত্তর আনা
+                    // জেমিনি এআই থেকে উত্তর আনা
                     let aiReply = await getGeminiReply(userMsg, apiKeyFromDb, botName, customAdminPrompt);
                     await sendMessengerMessage(sender_psid, aiReply);
                 }
@@ -89,26 +89,27 @@ app.post('/webhook', async (req, res) => {
     }
 });
 
-// ৫. গুগল জেমিনি এআই রেসপন্স ফানশন (নতুন AQ. Auth Key সাপোর্ট সহ)
+// ৫. ওয়েবসাইট (index.html)-এর সাথে ১০০% সেম জেমিনি এআই কলিং
 async function getGeminiReply(userMsg, apiKeyFromDb, botName, customAdminPrompt) {
-    let systemInstructionText = `তুমি "Ghost Store BD" এর কাস্টমার সাপোর্ট বট ${botName}। 
-মেসেঞ্জারে ইউজারকে অত্যন্ত বিনয়ী ও মার্জিত প্রমিত বাংলা/ইংরেজি/বাংলিশে সমাধান দেবে।
+    let systemInstructionText = `তুমি "Ghost Store BD" এর কাস্টমার সাপোর্ট স্মার্ট এআই এজেন্ট। তোমার নাম ${botName}।
 
-${customAdminPrompt ? `[এডমিন প্যানেলের লাইভ ইনস্ট্রাকশন ও নিয়মাবলি]:\n${customAdminPrompt}` : ''}`;
+🎯 নির্দেশিকা:
+১. গ্রাহক যেকোনো ভাষায় মেসেজ দিক না কেন—তুমি সহজ ও প্রফেশনাল উত্তর দেবে।
+২. উত্তর হবে বিনয়ী, বন্ধুভাবাপন্ন ও সংক্ষিপ্ত।
+৩. টপআপ, ডিপোজিট, অফার ও সাপোর্ট সংক্রান্ত সাহায্য করবে।
 
-    const defaultKey = "AQ.Ab8RN6IBL5igmsyBBojL5Y6UeGJL84qOBaSKOZR908Ua__tRqQ";
+${customAdminPrompt ? `[এডমিন বিশেষ নির্দেশিকা]:\n${customAdminPrompt}` : ''}`;
 
-    let keysToTry = [];
-    if (apiKeyFromDb) keysToTry.push(apiKeyFromDb);
-    if (process.env.GEMINI_API_KEY) keysToTry.push(process.env.GEMINI_API_KEY);
-    keysToTry.push(defaultKey);
+    let apiKey = apiKeyFromDb || process.env.GEMINI_API_KEY || "AQ.Ab8RN6IBL5igmsyBBojL5Y6UeGJL84qOBaSKOZR908Ua__tRqQ";
+    let cleanKey = apiKey.replace(/['"\s]/g, '');
 
+    // 🎯 ওয়েবসাইট (index.html) এর মতই মডেল সিকোয়েন্স
     const models = [
-        'gemini-2.5-flash',
-        'gemini-2.0-flash',
-        'gemini-1.5-flash',
         'gemini-3.6-flash',
-        'gemini-3.5-flash-lite'
+        'gemini-3.5-flash-lite',
+        'gemini-3.5-flash',
+        'gemini-2.5-flash',
+        'gemini-1.5-flash'
     ];
 
     const payload = {
@@ -116,40 +117,18 @@ ${customAdminPrompt ? `[এডমিন প্যানেলের লাইভ
         contents: [{ role: "user", parts: [{ text: userMsg }] }]
     };
 
-    for (let key of keysToTry) {
-        if (!key || key.length < 10) continue;
-        const cleanKey = key.replace(/['"]/g, '').trim();
+    for (let model of models) {
+        try {
+            const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${cleanKey}`;
+            const headers = { 'Content-Type': 'application/json' };
 
-        for (let model of models) {
-            try {
-                let url, headers;
+            const res = await axios.post(url, payload, { headers });
 
-                if (cleanKey.startsWith('AQ')) {
-                    // 🎯 নতুন AQ. Auth Key এর ক্ষেত্রে ইউআরএল-এ ?key= দেওয়া যাবে না
-                    url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent`;
-                    headers = {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${cleanKey}`,
-                        'x-goog-api-key': cleanKey
-                    };
-                } else {
-                    // পুরানো AIza Key এর ক্ষেত্রে
-                    url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(cleanKey)}`;
-                    headers = {
-                        'Content-Type': 'application/json',
-                        'x-goog-api-key': cleanKey
-                    };
-                }
-
-                const res = await axios.post(url, payload, { headers });
-
-                if (res.data && res.data.candidates && res.data.candidates[0] && res.data.candidates[0].content && res.data.candidates[0].content.parts[0] && res.data.candidates[0].content.parts[0].text) {
-                    return res.data.candidates[0].content.parts[0].text;
-                }
-            } catch (err) {
-                const status = err.response ? err.response.status : err.message;
-                console.error(`Gemini Fail (${model}): Status ${status}`);
+            if (res.data && res.data.candidates && res.data.candidates[0] && res.data.candidates[0].content && res.data.candidates[0].content.parts[0] && res.data.candidates[0].content.parts[0].text) {
+                return res.data.candidates[0].content.parts[0].text;
             }
+        } catch (err) {
+            console.error(`Gemini Fail (${model}):`, err.response ? err.response.status : err.message);
         }
     }
 
