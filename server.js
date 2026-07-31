@@ -88,26 +88,28 @@ app.post('/webhook', async (req, res) => {
     }
 });
 
-// ৫. শুধুমাত্র Gemini 3.6 & 3.5 ফ্ল্যাগশিপ মডেল দিয়ে এআই প্রসেসিং
+// ৫. ফাইনাল সেফগার্ড জেমিনি এআই ফাংশন (Priority 1: Confirmed Working Key)
 async function getGeminiReply(userMsg, apiKeyFromDb, botName, customAdminPrompt) {
     let systemInstructionText = `তুমি "Ghost Store BD" এর কাস্টমার সাপোর্ট বট ${botName}। 
 মেসেঞ্জারে ইউজারকে অত্যন্ত বিনয়ী ও মার্জিত প্রমিত বাংলা/ইংরেজি/বাংলিশে সমাধান দেবে।
 
 ${customAdminPrompt ? `[এডমিন বিশেষ নির্দেশিকা]:\n${customAdminPrompt}` : ''}`;
 
-    // আপনার নতুন অফিশিয়াল Gemini AQ Key
-    const newWorkingKey = "AQ.Ab8RN6IBL5igmsyBBojL5Y6UeGJL84qOBaSKOZR908Ua__tRqQ";
+    // 🎯 আপনার কনফার্ম হওয়া ওয়ার্কিং কি
+    const primaryWorkingKey = "AQ.Ab8RN6IBL5igmsyBBojL5Y6UeGJL84qOBaSKOZR908Ua__tRqQ";
 
-    let keysToTry = [];
-    if (apiKeyFromDb && apiKeyFromDb.length > 20) keysToTry.push(apiKeyFromDb);
-    if (process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY.length > 20) keysToTry.push(process.env.GEMINI_API_KEY);
-    keysToTry.push(newWorkingKey);
+    // সবার আগে আপনার নতুন সঠিক কী-টি ট্রাই করবে
+    let keysToTry = [primaryWorkingKey];
+    if (process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY.length > 15) keysToTry.push(process.env.GEMINI_API_KEY);
+    if (apiKeyFromDb && apiKeyFromDb.length > 15 && apiKeyFromDb !== primaryWorkingKey) keysToTry.push(apiKeyFromDb);
 
-    // 🎯 শুধুমাত্র Gemini 3.6 ও 3.5 মডেলসমূহ
+    // 🎯 Gemini 3.6, 3.5 Lite, 3.5 Flash এবং ব্যাকআপ মডেলসমূহ
     const models = [
         'gemini-3.6-flash',
         'gemini-3.5-flash-lite',
-        'gemini-3.5-flash'
+        'gemini-3.5-flash',
+        'gemini-2.5-flash',
+        'gemini-1.5-flash'
     ];
 
     const payload = {
@@ -119,26 +121,25 @@ ${customAdminPrompt ? `[এডমিন বিশেষ নির্দেশি
         if (!key || key.length < 15) continue;
         const cleanKey = key.replace(/['"\s]/g, '').trim();
 
-        console.log(`[Gemini] Executing call with key: ${cleanKey.substring(0, 12)}...`);
+        console.log(`[Gemini] Requesting with Key Prefix: ${cleanKey.substring(0, 12)}...`);
 
         for (let model of models) {
             try {
                 const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(cleanKey)}`;
                 
                 const headers = { 
-                    'Content-Type': 'application/json',
-                    'User-Agent': 'GhostStoreBD-Bot/1.0'
+                    'Content-Type': 'application/json'
                 };
 
                 const res = await axios.post(url, payload, { headers, timeout: 12000 });
 
                 if (res.data && res.data.candidates && res.data.candidates[0] && res.data.candidates[0].content && res.data.candidates[0].content.parts[0] && res.data.candidates[0].content.parts[0].text) {
-                    console.log(`[Gemini] SUCCESS via model: ${model}`);
+                    console.log(`[Gemini] SUCCESS via Model: ${model}`);
                     return res.data.candidates[0].content.parts[0].text;
                 }
             } catch (err) {
                 const status = err.response ? err.response.status : err.message;
-                console.error(`Gemini Fail (${model}) with Key [${cleanKey.substring(0, 10)}...]: Status ${status}`);
+                console.error(`Gemini Fail (${model}) Key [${cleanKey.substring(0, 10)}...]: Status ${status}`);
             }
         }
     }
