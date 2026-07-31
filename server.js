@@ -88,7 +88,7 @@ app.post('/webhook', async (req, res) => {
     }
 });
 
-// ৫. ফাইনাল সেফগার্ড জেমিনি এআই ফাংশন (গুগল অফিশিয়াল ২০২৬ স্পেসিফিকেশন)
+// ৫. শুধুমাত্র Gemini 3.6 & 3.5 ফ্ল্যাগশিপ মডেল দিয়ে এআই প্রসেসিং
 async function getGeminiReply(userMsg, apiKeyFromDb, botName, customAdminPrompt) {
     let systemInstructionText = `তুমি "Ghost Store BD" এর কাস্টমার সাপোর্ট বট ${botName}। 
 মেসেঞ্জারে ইউজারকে অত্যন্ত বিনয়ী ও মার্জিত প্রমিত বাংলা/ইংরেজি/বাংলিশে সমাধান দেবে।
@@ -103,10 +103,11 @@ ${customAdminPrompt ? `[এডমিন বিশেষ নির্দেশি
     if (process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY.length > 20) keysToTry.push(process.env.GEMINI_API_KEY);
     keysToTry.push(newWorkingKey);
 
+    // 🎯 শুধুমাত্র Gemini 3.6 ও 3.5 মডেলসমূহ
     const models = [
-        'gemini-2.5-flash',
-        'gemini-1.5-flash',
-        'gemini-2.0-flash'
+        'gemini-3.6-flash',
+        'gemini-3.5-flash-lite',
+        'gemini-3.5-flash'
     ];
 
     const payload = {
@@ -118,12 +119,10 @@ ${customAdminPrompt ? `[এডমিন বিশেষ নির্দেশি
         if (!key || key.length < 15) continue;
         const cleanKey = key.replace(/['"\s]/g, '').trim();
 
-        // Render লগে কনফার্ম করার জন্য প্রিন্ট
         console.log(`[Gemini] Executing call with key: ${cleanKey.substring(0, 12)}...`);
 
         for (let model of models) {
             try {
-                // গুগলের অফিশিয়াল সিঙ্গেল-হেডার রিকোয়েস্ট (Dual-Header Conflict বাইপাস করার জন্য)
                 const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(cleanKey)}`;
                 
                 const headers = { 
