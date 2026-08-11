@@ -1,4 +1,4 @@
-// 🚀 Ghost Store BD & SPARK AI BD - Centralized 24/7 Messenger Bot (server.js)
+// 🚀 Ghost Store BD & SPARK AI BD - Ultra Fast Messenger Bot (server.js)
 const express = require('express');
 const axios = require('axios');
 const cors = require('cors');
@@ -13,7 +13,7 @@ app.use(cors());
 let PAGE_ACCESS_TOKEN = process.env.PAGE_ACCESS_TOKEN || "EAAMR7ZCs6lokBSC5FeT8ZCjwyHRziVNRptNxZClsNQrWJyKtj6LFZCzVlqMkpDaDJiTQNZCETXDciEbyWWhsGYnHkEXvJhExHAji0xNC95IV7eWPFBiY9NQVaqDmZBEgcLYy9tr2QOWiDEvPh8qu7xnwaawZBpu4HBYsRLyMlOo9IkjhYuEOt0wKXEu3gtQbVdQxxpq";
 const VERIFY_TOKEN = process.env.VERIFY_TOKEN || "ghost_store_secret_token";
 
-// 🔑 ২. নতুন ফায়ারবেস ডাটাবেজ ইন্টিগ্রেশন (Panda-47867)
+// 🔑 ২. ফায়ারবেস কনফিগ (Panda-47867)
 const firebaseConfig = {
   apiKey: "AIzaSyC6Ww5ePRGYdh55-qr-fOkS4VcuXoBM7oQ",
   authDomain: "panda-47867.firebaseapp.com",
@@ -26,33 +26,28 @@ const firebaseConfig = {
 
 if (!firebase.apps.length) {
     firebase.initializeApp(firebaseConfig);
-    console.log("🔥 Firebase Panda-47867 Successfully Connected!");
 }
-
 const db = firebase.firestore();
 
-// 🌐 ৩. মেটা ওয়েবহুক ভেরিফিকেশন (GET Request)
+// 🌐 ৩. মেটা ওয়েবহুক ভেরিফিকেশন (GET)
 app.get('/webhook', (req, res) => {
     let mode = req.query['hub.mode'];
     let token = req.query['hub.verify_token'];
     let challenge = req.query['hub.challenge'];
 
-    if (mode === 'subscribe' && token === VERIFY_TOKEN) {
-        console.log("WEBHOOK_VERIFIED");
-        res.status(200).send(challenge);
-    } else if (challenge) {
+    if ((mode === 'subscribe' && token === VERIFY_TOKEN) || challenge) {
         res.status(200).send(challenge);
     } else {
         res.sendStatus(403);
     }
 });
 
-// 📩 ৪. ইনকামিং মেসেঞ্জার মেসেজ প্রসেসিং (POST Request)
+// 📩 ৪. ইনকামিং মেসেঞ্জার প্রসেসিং (POST)
 app.post('/webhook', async (req, res) => {
     let body = req.body;
 
     if (body.object === 'page') {
-        res.status(200).send('EVENT_RECEIVED');
+        res.status(200).send('EVENT_RECEIVED'); // ফেসবুকে সাথে সাথে 200 OK রেসপন্স পাঠানো
 
         for (let entry of body.entry) {
             if (entry.messaging && entry.messaging[0]) {
@@ -62,34 +57,37 @@ app.post('/webhook', async (req, res) => {
                 if (sender_psid && webhook_event.message && webhook_event.message.text) {
                     let userMsg = webhook_event.message.text;
 
+                    // ⚡ ১. ফেসবুকে সাথে সাথে "Typing On" স্টেটাস দেখানো
+                    sendSenderAction(sender_psid, "typing_on");
+
                     let apiKeyFromDb = "";
                     let botName = "S.P.A.R.K. (Ghost AI)";
                     let customAdminPrompt = "";
                     let customModel = "";
 
-                    // ফায়ারবেস থেকে লাইভ সেটিংস চেক করা
                     if (db) {
                         try {
                             let doc = await db.collection("settings").doc("general").get();
                             if (doc.exists) {
                                 let data = doc.data();
-                                // এডমিন প্যানেল থেকে বট বন্ধ করা থাকলে উত্তর দেবে না
-                                if (data.aiEnabled === false) return;
-
-                                if (data.aiApiKey && data.aiApiKey.trim().length > 15) {
-                                    apiKeyFromDb = data.aiApiKey.trim();
+                                if (data.aiEnabled === false) {
+                                    sendSenderAction(sender_psid, "typing_off");
+                                    return;
                                 }
+                                if (data.aiApiKey && data.aiApiKey.trim().length > 15) apiKeyFromDb = data.aiApiKey.trim();
                                 if (data.aiBotName) botName = data.aiBotName;
                                 if (data.aiSystemPrompt) customAdminPrompt = data.aiSystemPrompt;
                                 if (data.aiModel) customModel = data.aiModel;
                             }
-                        } catch (e) {
-                            console.error("Firestore Read Error:", e.message);
-                        }
+                        } catch (e) {}
                     }
 
-                    let aiReply = await getGeminiReply(userMsg, apiKeyFromDb, botName, customAdminPrompt, customModel);
+                    // ⚡ ২. ফাস্ট রিপ্লাই প্রসেস
+                    let aiReply = await getGeminiReplyFast(userMsg, apiKeyFromDb, botName, customAdminPrompt, customModel);
+                    
+                    // ⚡ ৩. মেসেজ পাঠানো
                     await sendMessengerMessage(sender_psid, aiReply);
+                    sendSenderAction(sender_psid, "typing_off");
                 }
             }
         }
@@ -98,30 +96,24 @@ app.post('/webhook', async (req, res) => {
     }
 });
 
-// 🤖 ৫. জেমিনি এআই প্রসেসিং ফাংশন
-async function getGeminiReply(userMsg, apiKeyFromDb, botName, customAdminPrompt, customModel) {
+// 🤖 ৫. সুপার ফাস্ট জেমিনি ফাংশন (৪ সেকেন্ড টাইমাউট)
+async function getGeminiReplyFast(userMsg, apiKeyFromDb, botName, customAdminPrompt, customModel) {
     let systemInstructionText = `তুমি "Ghost Store BD" এর কাস্টমার সাপোর্ট বট ${botName}। 
-মেসেঞ্জারে ইউজারকে অত্যন্ত বিনয়ী ও মার্জিত প্রমিত বাংলা/ইংরেজি/বাংলিশে সমাধান দেবে।
+মেসেঞ্জারে ইউজারকে বিনয়ী ও সংক্ষেপে বাংলা/ইংরেজি/বাংলিশে উত্তর দেবে।
+${customAdminPrompt ? `[এডমিন নির্দেশিকা]:\n${customAdminPrompt}` : ''}`;
 
-${customAdminPrompt ? `[এডমিন বিশেষ নির্দেশিকা]:\n${customAdminPrompt}` : ''}`;
-
-    // primary key
     const primaryWorkingKey = "AQ.Ab8RN6IBL5igmsyBBojL5Y6UeGJL84qOBaSKOZR908Ua__tRqQ";
 
     let keysToTry = [primaryWorkingKey];
-    if (process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY.length > 15) {
-        keysToTry.push(process.env.GEMINI_API_KEY);
-    }
     if (apiKeyFromDb && apiKeyFromDb.length > 15 && apiKeyFromDb !== primaryWorkingKey) {
-        keysToTry.push(apiKeyFromDb);
+        keysToTry.unshift(apiKeyFromDb); // এডমিন কি প্রথমে চেষ্টা করবে
     }
 
-    // Gemini 3.x, 2.5 & Backup Models
+    // আল্ট্রা ফাস্ট মডেল অগ্রাধিকার
     const models = [
-        customModel || 'gemini-3.6-flash',
-        'gemini-3.6-flash',
+        customModel || 'gemini-3.5-flash-lite',
         'gemini-3.5-flash-lite',
-        'gemini-3.5-flash',
+        'gemini-3.6-flash',
         'gemini-2.5-flash',
         'gemini-1.5-flash'
     ];
@@ -135,22 +127,21 @@ ${customAdminPrompt ? `[এডমিন বিশেষ নির্দেশি
         if (!key || key.length < 15) continue;
         const cleanKey = key.replace(/['"\s]/g, '').trim();
 
-        console.log(`[Gemini] Requesting with Key Prefix: ${cleanKey.substring(0, 10)}...`);
-
         for (let model of models) {
             try {
                 const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(cleanKey)}`;
                 
-                const headers = { 'Content-Type': 'application/json' };
-                const res = await axios.post(url, payload, { headers, timeout: 12000 });
+                // ⚡ টাইমাউট কমিয়ে ৪ সেকেন্ড করা হয়েছে
+                const res = await axios.post(url, payload, { 
+                    headers: { 'Content-Type': 'application/json' },
+                    timeout: 4000 
+                });
 
                 if (res.data?.candidates?.[0]?.content?.parts?.[0]?.text) {
-                    console.log(`[Gemini SUCCESS] via Model: ${model}`);
                     return res.data.candidates[0].content.parts[0].text;
                 }
             } catch (err) {
-                const status = err.response ? err.response.status : err.message;
-                console.error(`[Gemini Fail] Model (${model}): Status ${status}`);
+                // Fail fast to next model
             }
         }
     }
@@ -158,24 +149,30 @@ ${customAdminPrompt ? `[এডমিন বিশেষ নির্দেশি
     return "ধন্যবাদ মেসেজ করার জন্য! Ghost Store BD-তে আপনাকে স্বাগতম। কীভাবে সাহায্য করতে পারি বলুন?";
 }
 
-// 📤 ৬. মেসেঞ্জারে উত্তর পাঠানোর ফাংশন
+// ⚡ টাইপিং ইন্ডিকেটর পাঠানো
+async function sendSenderAction(sender_psid, action) {
+    let request_body = {
+        "recipient": { "id": sender_psid },
+        "sender_action": action
+    };
+    try {
+        await axios.post(`https://graph.facebook.com/v18.0/me/messages?access_token=${encodeURIComponent(PAGE_ACCESS_TOKEN.trim())}`, request_body);
+    } catch (err) {}
+}
+
+// 📤 মেসেঞ্জার সেন্ড ফাংশন
 async function sendMessengerMessage(sender_psid, responseText) {
     let request_body = {
         "recipient": { "id": sender_psid },
         "message": { "text": responseText }
     };
 
-    let token = PAGE_ACCESS_TOKEN.trim();
-
     try {
-        await axios.post(`https://graph.facebook.com/v18.0/me/messages?access_token=${encodeURIComponent(token)}`, request_body, {
+        await axios.post(`https://graph.facebook.com/v18.0/me/messages?access_token=${encodeURIComponent(PAGE_ACCESS_TOKEN.trim())}`, request_body, {
             headers: { 'Content-Type': 'application/json' }
         });
-        console.log("SUCCESSFULLY_SENT_TO_MESSENGER");
-    } catch (err) {
-        console.error("Messenger Send Error:", err.response ? JSON.stringify(err.response.data) : err.message);
-    }
+    } catch (err) {}
 }
 
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`SPARK AI BD Server running on port ${PORT}`));
+app.listen(PORT, () => console.log(`SPARK Fast AI Server running on port ${PORT}`));
