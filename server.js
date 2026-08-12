@@ -134,7 +134,7 @@ ${customAdminPrompt ? `[এডমিন নির্দেশিকা]:\n${cust
                 // ⚡ টাইমাউট কমিয়ে ৪ সেকেন্ড করা হয়েছে
                 const res = await axios.post(url, payload, { 
                     headers: { 'Content-Type': 'application/json' },
-                    timeout: 3000 
+                    timeout: 4000 
                 });
 
                 if (res.data?.candidates?.[0]?.content?.parts?.[0]?.text) {
